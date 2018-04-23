@@ -6,6 +6,7 @@ authors = ["Carl Lerche <me@carllerche.com>"]
 [workspace]
 members = [
   "tower-add-origin",
+  "tower-deflate",
 ]
 
 [dependencies]
