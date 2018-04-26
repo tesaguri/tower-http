@@ -8,4 +8,3 @@ futures = "0.1"
 http = "0.1"
 tower = { git = "https://github.com/tower-rs/tower" }
 deflate = {version = "0.7.18", features = ["gzip"] }
- env_logger
