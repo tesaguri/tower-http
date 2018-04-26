@@ -14,13 +14,13 @@ use std::io::{self, Write};
 
 /// A service that compresses the response of the wrapped service.
 #[derive(Clone, Debug)]
-pub struct Deflate<T> {
+pub struct Compress<T> {
     inner: T,
     options: deflate::CompressionOptions,
 }
 
 #[derive(Clone, Debug)]
-pub struct DeflateFuture<T> {
+pub struct CompressFuture<T> {
     inner: T,
     encoding: Encoding,
     options: deflate::CompressionOptions,
@@ -48,15 +48,22 @@ enum Encoder<W: Write> {
 }
 
 #[derive(Debug)]
-enum Error<T> {
+pub enum Error<T> {
     Inner(T),
     Write(io::Error),
     Finish(io::Error),
 }
 
-// ===== impl Deflate =====
+// ===== impl Compress =====
 
-impl<T> Deflate<T> {
+impl<T> Compress<T> {
+    pub fn new(inner: T) -> Self {
+        Compress {
+            inner,
+            options: deflate::CompressionOptions::default(),
+        }
+    }
+
     /// Returns a reference to the inner service.
     pub fn get_ref(&self) -> &T {
         &self.inner
@@ -73,7 +80,7 @@ impl<T> Deflate<T> {
     }
 }
 
-impl<T, A, B> Service for Deflate<T>
+impl<T, A, B> Service for Compress<T>
 where
     T: Service<
         Request = Request<A>,
@@ -83,32 +90,24 @@ where
 {
     type Request = T::Request;
     type Response = Response<Vec<u8>>;
-    type Error = T::Error;
-    type Future = DeflateFuture<T::Future>;
+    type Error = Error<T::Error>;
+    type Future = CompressFuture<T::Future>;
 
     fn poll_ready(&mut self) -> Poll<(), Self::Error> {
-        self.inner.poll_ready()
+        self.inner.poll_ready().map_err(Error::Inner)
     }
 
     fn call(&mut self, req: Self::Request) -> Self::Future {
         let encoding = Encoding::from_request(&req);
-        let options = self.options;
-        // self.inner.call(req).and_then(move |resp| {
-        //     let (parts, body) = resp.into_parts();
-        //     let encoder = encoding.map(|e| e.into_encoder(
-        //             Vec::<u8>::with_capacity(body.len() / 3),
-        //             options,
-        //         )
-        //     ).unwrap_or_else(|| {
-        //         Encoder::Uncompressed(Vec::with_capacity(body.len()))
-        //     });
-
-        // })
-        unimplemented!()
+        CompressFuture {
+            inner: self.inner.call(req),
+            options: self.options,
+            encoding,
+        }
     }
 }
 
-impl<T> DeflateFuture<T> {
+impl<T> CompressFuture<T> {
     fn make_encoder(&self, capacity: usize) -> Encoder<Vec<u8>> {
         use Encoding::*;
         let writer = Vec::<u8>::with_capacity(capacity);
@@ -121,7 +120,7 @@ impl<T> DeflateFuture<T> {
     }
 }
 
-impl<T, B> Future for DeflateFuture<T>
+impl<T, B> Future for CompressFuture<T>
 where
     T: Future<Item = Response<B>>,
     B: AsRef<[u8]>,
@@ -135,7 +134,7 @@ where
         let body = body.as_ref();
         let capacity = if self.encoding.is_compressed() {
             parts.headers.insert(
-                header::TRANSFER_ENCODING,
+                header::CONTENT_ENCODING,
                 self.encoding.header_value(),
             );
             body.len() / 3
@@ -145,7 +144,7 @@ where
         let mut encoder = self.make_encoder(capacity);
         encoder.write(body).map_err(Error::Write)?;
         let body = encoder.finish().map_err(Error::Finish)?;
-        Ok(Async::Ready(Response::from_parts(parts, body))
+        Ok(Async::Ready(Response::from_parts(parts, body)))
     }
 }
 
@@ -168,7 +167,7 @@ impl Encoding {
                     })
             })
             .next()
-            .unwrap_or_else(Encoding::Uncompressed)
+            .unwrap_or(Encoding::Uncompressed)
     }
 
     fn is_compressed(&self) -> bool {
@@ -235,7 +234,7 @@ mod tests {
                 .header("Accept-Encoding", "Identity")
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), None)
+            assert_eq!(Encoding::from_request(&req), Encoding::Uncompressed)
         }
 
         #[test]
@@ -243,7 +242,7 @@ mod tests {
             let req = Request::builder()
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), None)
+            assert_eq!(Encoding::from_request(&req), Encoding::Uncompressed)
         }
 
         #[test]
@@ -252,7 +251,7 @@ mod tests {
                 .header("Accept-Encoding", "inflate")
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), None)
+            assert_eq!(Encoding::from_request(&req), Encoding::Uncompressed)
         }
 
         #[test]
@@ -261,7 +260,7 @@ mod tests {
                 .header("Accept-Encoding", "gzip")
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), Some(Encoding::Gzip))
+            assert_eq!(Encoding::from_request(&req), Encoding::Gzip)
         }
 
         #[test]
@@ -270,7 +269,7 @@ mod tests {
                 .header("Accept-Encoding", "deflate")
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), Some(Encoding::Deflate))
+            assert_eq!(Encoding::from_request(&req), Encoding::Deflate)
         }
 
         #[test]
@@ -280,7 +279,7 @@ mod tests {
                 .header("Accept-Encoding", "deflate")
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), Some(Encoding::Gzip))
+            assert_eq!(Encoding::from_request(&req), Encoding::Gzip)
         }
 
         #[test]
@@ -291,7 +290,7 @@ mod tests {
                 .header("Accept-Encoding", "deflate")
                 .body(())
                 .unwrap();
-            assert_eq!(Encoding::from_request(&req), Some(Encoding::Gzip))
+            assert_eq!(Encoding::from_request(&req), Encoding::Gzip)
         }
     }
 

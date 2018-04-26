@@ -1,0 +1,15 @@
+[package]
+name = "tower-compress"
+version = "0.0.1"
+authors = ["Eliza Weisman <eliza@buoyant.io>"]
+
+[dependencies]
+futures = "0.1"
+http = "0.1"
+tower-service = { git = "https://github.com/tower-rs/tower" }
+deflate = {version = "0.7.18", features = ["gzip"] }
+
+[dev-dependencies]
+tower-mock = { git = "https://github.com/tower-rs/tower" }
+flate2 = { version = "1.0.1", default-features = false, features = ["rust_backend"] }
+

@@ -6,8 +6,9 @@ authors = ["Carl Lerche <me@carllerche.com>"]
 [workspace]
 members = [
   "tower-add-origin",
-  "tower-deflate",
+  "tower-compress",
 ]
 
 [dependencies]
 tower-add-origin = { path = "tower-add-origin" }
+tower-compress = { path = "tower-compress" }
