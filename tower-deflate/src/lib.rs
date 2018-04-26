@@ -2,13 +2,13 @@ extern crate deflate;
 #[macro_use]
 extern crate futures;
 extern crate http;
-extern crate tower;
+extern crate tower_service;
 
 use deflate::write::{DeflateEncoder, GzEncoder};
 use futures::{Async, Future, Poll};
 use http::{Request, Response};
 use http::header::{self, HeaderValue};
-use tower::Service;
+use tower_service::Service;
 
 use std::io::{self, Write};
 
