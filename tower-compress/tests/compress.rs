@@ -91,3 +91,99 @@ fn gzips_requests(){
 
     assert_eq!("hello gzipped world!", &decompressed_body)
 }
+
+#[test]
+fn doesnt_compress_identity(){
+    let (mock, mut handle) = Mock::<_, _, ()>::new();
+    let mut compress = Compress::new(mock);
+
+    let request = Request::get("/")
+        .header("Accept-Encoding", "Identity")
+        .body(())
+        .unwrap();
+
+    let response_future = compress.call(request);
+
+    let (_request, send_response) = handle.next_request()
+        .unwrap()
+        .into_parts();
+
+    send_response.respond(Response::builder()
+        .status(200)
+        .body(b"hello uncompressed world!")
+        .expect("send response"));
+
+    let response = response_future.wait()
+        .expect("response future");
+
+    assert_eq!(&b"hello uncompressed world!"[..], &response.into_body()[..])
+}
+
+
+#[test]
+fn no_header_is_identity(){
+    let (mock, mut handle) = Mock::<_, _, ()>::new();
+    let mut compress = Compress::new(mock);
+
+    let request = Request::get("/")
+        .body(())
+        .unwrap();
+
+    let response_future = compress.call(request);
+
+    let (_request, send_response) = handle.next_request()
+        .unwrap()
+        .into_parts();
+
+    send_response.respond(Response::builder()
+        .status(200)
+        .body(b"hello uncompressed world!")
+        .expect("send response"));
+
+    let response = response_future.wait()
+        .expect("response future");
+
+    assert_eq!(&b"hello uncompressed world!"[..], &response.into_body()[..])
+}
+
+#[test]
+fn chooses_first_supported_encoding_header(){
+    let (mock, mut handle) = Mock::<_, _, ()>::new();
+    let mut compress = Compress::new(mock);
+
+    let request = Request::get("/")
+        .header("Accept-Encoding", "identity")
+        .header("Accept-Encoding", "brotli")
+        .header("Accept-Encoding", "gzip")
+        .header("Accept-Encoding", "deflate")
+        .body(())
+        .unwrap();
+
+    let response_future = compress.call(request);
+
+    let (_request, send_response) = handle.next_request()
+        .unwrap()
+        .into_parts();
+
+    send_response.respond(Response::builder()
+        .status(200)
+        .body(b"hello gzipped world!")
+        .expect("send response"));
+
+    let response = response_future.wait()
+        .expect("response future");
+
+    assert!(response.headers()
+        .get_all(header::CONTENT_ENCODING)
+        .iter()
+        .any(|v| v == "gzip")
+    );
+
+    let body_reader = Cursor::new(response.into_body());
+    let mut decoder = read::GzDecoder::new(body_reader);
+    let mut decompressed_body = String::new();
+    decoder.read_to_string(&mut decompressed_body)
+        .expect("decompress");
+
+    assert_eq!("hello gzipped world!", &decompressed_body)
+}
