@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["IntoBufStream","Wraps a `Body` instance, implementing `tokio_buf::BufStream`."]],"trait":[["BodyExt","An extension trait for `Body` providing additional adapters."]]});
